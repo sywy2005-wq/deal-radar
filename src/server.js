@@ -7,6 +7,7 @@ import { calculateDeal } from './deals.js';
 import { fetchVerifiedQuote } from './quotes.js';
 import { loadSources } from './sources.js';
 import { QuoteStore } from './store.js';
+import { summarizeHistory } from './history.js';
 
 const root = fileURLToPath(new URL('../public/', import.meta.url));
 const store = new QuoteStore(process.env.HISTORY_FILE || fileURLToPath(new URL('../data/history.json', import.meta.url)));
@@ -19,7 +20,7 @@ export function createApp({ sources = loadSources(), quoteStore = store, fetchIm
       const url = new URL(req.url, 'http://localhost');
       if (req.method === 'GET' && url.pathname === '/api/status') {
         const history = await quoteStore.list();
-        return json(res, 200, { target: TARGET, sources: sources.map(({ id, name, enabled }) => ({ id, name, enabled })), history, hasVerifiedHistory: history.length > 0 });
+        return json(res, 200, { target: TARGET, sources: sources.map(({ id, name, enabled }) => ({ id, name, enabled })), history, historySummary: summarizeHistory(history), hasObservedHistory: history.length > 0, hasVerifiedHistory: false });
       }
       if (req.method === 'POST' && url.pathname === '/api/calculate') return json(res, 200, calculateDeal(await readBody(req)));
       if (req.method === 'POST' && url.pathname === '/api/quotes/refresh') {
