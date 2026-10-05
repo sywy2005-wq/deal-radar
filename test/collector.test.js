@@ -24,7 +24,7 @@ test('并发手动刷新合并为一次实际请求', async t => {
   const [a, b] = await Promise.all([first, second]);
   assert.equal(calls, 1);
   assert.equal(a.results[0].ok, true);
-  assert.equal(b.results[0].quote.evidence.parserVersion, 'json-v2');
+  assert.equal(b.results[0].quote.evidence.parserVersion, 'json-v3');
 });
 test('未启用来源不会发请求，默认不启动定时器', async t => {
   let calls = 0;

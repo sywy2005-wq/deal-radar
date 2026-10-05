@@ -67,3 +67,17 @@ test('不同颜色和优惠适用人群不会被错误去重', async t => {
   await Promise.all([store.add(a), store.add(b), store.add(c)]);
   assert.equal((await store.list()).length, 3);
 });
+
+test('同价同时刻的优惠证据或有效期变化不能被错误去重', async t => {
+  const { file } = await fixture(t);
+  const store = new QuoteStore(file);
+  const first = { ...row, evidence: { responseSha256: 'test-a', parserVersion: 'json-v3' },
+    pricing: { status: 'calculated', validUntil: '2026-10-03T00:00:00Z', applied: [{ id: 'coupon-a' }] } };
+  const changed = { ...first, evidence: { ...first.evidence, responseSha256: 'test-b' } };
+  const newPlan = { ...changed, pricing: { ...first.pricing, applied: [{ id: 'coupon-b' }] } };
+  await store.add(first);
+  await store.add(changed);
+  await store.add(newPlan);
+  await store.add(newPlan);
+  assert.equal((await store.list()).length, 3);
+});

@@ -107,3 +107,55 @@ test('请求携带环境凭据并禁止重定向，错误不回显凭据', async
   const failed = await fetchVerifiedQuote(secretSource, { fetchImpl: async () => { throw new Error('secret-test-only'); } });
   assert.ok(!JSON.stringify(failed).includes('secret-test-only'));
 });
+
+test('结构化公共优惠自动计算，优惠后来源报价不重复扣减', () => {
+  const offer = { id: 'public', sku: 'KX0493', size: 'L', confirmed: true,
+    startsAt: '2026-10-02T00:00:00Z', endsAt: '2026-10-03T00:00:00Z',
+    type: 'fixed', stage: 'platform', order: 0, amountCents: 1000,
+    stackable: true, requirements: [], regions: [] };
+  const full = { ...quote, price: 100, priceBasis: 'item_price', color: 'blue',
+    stock: 'in_stock', shipping: 5, shippingRegion: 'CN-31', quantity: 1,
+    offerEligibility: 'public', eligibilityKey: 'public', couponCoverage: 'complete', offers: [offer] };
+  const calculated = validateQuote(full, source, now);
+  assert.equal(calculated.ok, true);
+  assert.equal(calculated.quote.price, 90);
+  assert.equal(calculated.quote.totalCents, 9500);
+  assert.equal(calculated.quote.pricing.purchaseSteps.length > 0, true);
+  const already = validateQuote({ ...full, price: 90, priceBasis: 'payable_item_price', priceValidUntil: '2026-10-03T00:00:00Z' }, source, now);
+  assert.equal(already.quote.price, 90);
+  assert.equal(already.quote.totalCents, 9500);
+  assert.equal(already.quote.pricing.status, 'already_discounted');
+});
+test('未知会员资格保留原价但不参与历史最低值比较', () => {
+  const offer = { id: 'member', sku: 'KX0493', size: 'L', confirmed: true,
+    startsAt: '2026-10-02T00:00:00Z', endsAt: '2026-10-03T00:00:00Z',
+    type: 'fixed', stage: 'platform', order: 0, amountCents: 1000,
+    stackable: true, requirements: [{ type: 'member' }], regions: [] };
+  const result = validateQuote({ ...quote, price: 100, priceBasis: 'item_price', offers: [offer],
+    shipping: 0, quantity: 1, couponCoverage: 'complete' }, source, now);
+  assert.equal(result.ok, true);
+  assert.equal(result.quote.price, 100);
+  assert.equal(result.quote.comparable, false);
+  assert.equal(result.quote.pricing.complete, false);
+});
+test('错误有效日期和已到期的优惠报价被拒绝', () => {
+  assert.equal(validateQuote({ ...quote, observedAt: '2026-02-30T11:50:00Z' }, source, now).ok, false);
+  assert.equal(validateQuote({ ...quote, priceValidUntil: '2026-10-02T11:00:00Z' }, source, now).ok, false);
+});
+
+test('同账户标识的已核验会员优惠可以计算，账户不匹配则保持待核验', () => {
+  const offer = { id: 'member', sku: 'KX0493', size: 'L', confirmed: true,
+    startsAt: '2026-10-02T00:00:00Z', endsAt: '2026-10-03T00:00:00Z',
+    type: 'fixed', stage: 'platform', order: 0, amountCents: 1000,
+    stackable: true, requirements: [{ type: 'member' }], regions: [] };
+  const full = { ...quote, price: 100, priceBasis: 'item_price', color: 'blue',
+    stock: 'in_stock', shipping: 0, shippingRegion: 'CN-31', quantity: 1,
+    offerEligibility: 'verified_account', eligibilityKey: 'member-v1',
+    buyerContext: { verified: true, eligibilityKey: 'member-v1', member: true },
+    couponCoverage: 'complete', offers: [offer] };
+  assert.equal(validateQuote(full, source, now).quote.price, 90);
+  assert.equal(validateQuote(full, source, now).quote.comparable, true);
+  const wrong = validateQuote({ ...full, buyerContext: { ...full.buyerContext, eligibilityKey: 'other' } }, source, now);
+  assert.equal(wrong.quote.price, 100);
+  assert.equal(wrong.quote.comparable, false);
+});

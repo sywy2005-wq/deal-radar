@@ -24,7 +24,9 @@ export function loadSources(env = process.env, { readConfig = file => JSON.parse
     if (!Number.isFinite(maxAgeMinutes) || maxAgeMinutes <= 0 || maxAgeMinutes > 15) throw new TypeError('报价有效期必须是十五分钟以内的有限正数');
     const allowedProductOrigins = entry.allowedProductOrigins?.length ? entry.allowedProductOrigins : (endpoint ? [endpoint.origin] : []);
     if (!Array.isArray(allowedProductOrigins)) throw new TypeError('商品域名白名单必须是数组');
-    for (const origin of allowedProductOrigins) {
+    const allowedActionOrigins = entry.allowedActionOrigins ?? allowedProductOrigins;
+    if (!Array.isArray(allowedActionOrigins)) throw new TypeError('优惠操作域名白名单必须是数组');
+    for (const origin of [...allowedProductOrigins, ...allowedActionOrigins]) {
       const url = new URL(origin);
       if (url.protocol !== 'https:' || url.origin !== origin || url.hostname.includes('*') || url.username || url.password) throw new TypeError('商品域名白名单必须是 HTTPS origin');
     }
@@ -36,7 +38,7 @@ export function loadSources(env = process.env, { readConfig = file => JSON.parse
     const enabled = entry.enabled && blockedReasons.length === 0;
     return {
       id: entry.id, name: entry.name || entry.id, channel: entry.channel || 'json',
-      url: endpoint?.href ?? null, enabled, maxAgeMinutes, allowedProductOrigins,
+      url: endpoint?.href ?? null, enabled, maxAgeMinutes, allowedProductOrigins, allowedActionOrigins,
       reviewStatus: entry.reviewStatus || 'pending', reviewEvidence: entry.reviewEvidence || null,
       token: entry.tokenEnv ? env[entry.tokenEnv] : undefined,
       blockedReasons: enabled ? [] : (blockedReasons.length ? blockedReasons : ['运营方未启用'])

@@ -1,10 +1,12 @@
+import { solveOffers, purchaseSteps } from './offers.js';
+import { timestampMs } from './time.js';
 import { createHash } from 'node:crypto';
 import { TARGET } from './catalog.js';
 import { moneyCents, quantityValue } from './money.js';
 import { comparisonConditions } from './conditions.js';
 
 const text = value => typeof value === 'string' && value.trim() ? value.trim() : null;
-const timestamp = value => typeof value === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?(?:Z|[+-]\d{2}:\d{2})$/.test(value) && Number.isFinite(Date.parse(value));
+const timestamp = value => { try { timestampMs(value); return true; } catch { return false; } };
 
 export function validateQuote(raw, source, now = new Date()) {
   const errors = [];
@@ -42,9 +44,13 @@ export function validateQuote(raw, source, now = new Date()) {
   if (raw.offerEligibility !== undefined && !['public', 'verified_account', 'unknown'].includes(raw.offerEligibility)) errors.push('优惠资格状态无效');
   if (raw.couponCoverage !== undefined && !['complete', 'partial', 'unknown'].includes(raw.couponCoverage)) errors.push('优惠完整性状态无效');
   if (raw.priceBasis !== undefined && !['item_price', 'payable_item_price', 'unknown'].includes(raw.priceBasis)) errors.push('价格口径无效');
+  if (raw.priceValidUntil !== undefined) {
+    try { if (timestampMs(raw.priceValidUntil) <= now.valueOf()) errors.push('优惠后报价已过期'); }
+    catch { errors.push('优惠后报价有效期无效'); }
+  }
   if (errors.length) return { ok: false, errors };
   const quote = {
-    sourceId: source.id, sourceName: source.name, sku: TARGET.sku, size: TARGET.size,
+    sourceId: source.id, sourceName: source.name, channel: source.channel || 'json', sku: TARGET.sku, size: TARGET.size,
     currency: TARGET.currency, price: priceCents / 100, priceCents, productUrl,
     observedAt: new Date(raw.observedAt).toISOString(), verifiedAt: now.toISOString(),
     verificationLevel: 'field_checked', color: text(raw.color), stock,
@@ -52,8 +58,35 @@ export function validateQuote(raw, source, now = new Date()) {
     offerEligibility: raw.offerEligibility ?? 'unknown',
     eligibilityKey: text(raw.eligibilityKey),
     couponCoverage: raw.couponCoverage ?? 'unknown',
-    priceBasis: raw.priceBasis ?? 'unknown'
+    priceBasis: raw.priceBasis ?? 'unknown',
+    priceValidUntil: raw.priceValidUntil ?? null
   };
+  if (raw.offers !== undefined) {
+    if (!Array.isArray(raw.offers)) return { ok: false, errors: ['优惠规则必须是数组'] };
+    if (quote.priceBasis === 'payable_item_price') {
+      quote.pricing = { status: 'already_discounted', complete: false,
+        validUntil: quote.priceValidUntil, needsVerification: ['来源报价已包含优惠，未再次扣减；领取步骤须核验'], applied: [], excluded: [] };
+      if (raw.offers.length && !quote.priceValidUntil) quote.couponCoverage = 'partial';
+    } else if (quote.priceBasis !== 'item_price' || quote.quantity !== 1) {
+      quote.pricing = { status: 'needs_verification', complete: false, needsVerification: ['优惠计算需明确单件原价口径'], applied: [], excluded: [] };
+    } else {
+      try {
+        const buyer = raw.buyerContext?.verified === true && raw.buyerContext.eligibilityKey === quote.eligibilityKey ? raw.buyerContext : null;
+        const plan = solveOffers({
+          itemCents: quote.priceCents, shippingCents: quote.shippingCents, offers: raw.offers,
+          sku: TARGET.sku, size: TARGET.size, shippingRegion: quote.shippingRegion, buyer,
+          coverage: quote.couponCoverage, now: now.valueOf(),
+          allowedActionOrigins: source.allowedActionOrigins || source.allowedProductOrigins || [new URL(source.url).origin]
+        });
+        quote.pricing = { ...plan, purchaseSteps: purchaseSteps(plan) };
+        if (plan.complete) {
+          quote.priceCents = plan.itemCents; quote.price = plan.itemCents / 100;
+          quote.shippingCents = plan.shippingCents; quote.priceBasis = 'payable_item_price';
+          if (plan.usesPrivateEligibility) quote.offerEligibility = 'verified_account';
+        } else quote.couponCoverage = 'partial';
+      } catch { return { ok: false, errors: ['优惠规则或操作链接校验失败'] }; }
+    }
+  }
   const conditions = comparisonConditions(quote);
   return { ok: true, quote: { ...quote, ...conditions, priceStatus: conditions.comparable ? 'ready_for_comparison' : 'needs_verification' } };
 }
@@ -82,7 +115,7 @@ export async function fetchVerifiedQuote(source, { fetchImpl = fetch, now } = {}
     if (Buffer.byteLength(serialized) > 262144) throw new TypeError('上游响应过大');
     const checked = validateQuote(raw, source, now ?? new Date());
     if (checked.ok) checked.quote.evidence = {
-      parserVersion: 'json-v2', receivedAt: checked.quote.verifiedAt,
+      parserVersion: 'json-v3', receivedAt: checked.quote.verifiedAt,
       responseSha256: createHash('sha256').update(serialized).digest('hex'),
       rawResponse: raw
     };

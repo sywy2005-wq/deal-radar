@@ -7,6 +7,7 @@ import { calculateDeal } from './deals.js';
 import { fetchVerifiedQuote, publicQuote, publicResults } from './quotes.js';
 import { loadSources, publicSources } from './sources.js';
 import { QuoteStore } from './store.js';
+import { buyingAdvice } from './advice.js';
 import { summarizeHistory } from './history.js';
 import { CollectionJournal } from './collection-journal.js';
 import { Collector } from './collector.js';
@@ -22,7 +23,7 @@ export function createApp({ sources = loadSources(), quoteStore = store, fetchIm
       const url = new URL(req.url, 'http://localhost');
       if (req.method === 'GET' && url.pathname === '/api/status') {
         const history = (await quoteStore.list()).map(publicQuote);
-        return json(res, 200, { target: TARGET, sources: publicSources(sources), collection: collector ? collector.status() : { enabled: false, running: false }, history, historySummary: summarizeHistory(history), hasObservedHistory: history.length > 0, hasVerifiedHistory: false });
+        return json(res, 200, { target: TARGET, sources: publicSources(sources), collection: collector ? collector.status() : { enabled: false, running: false }, history, historySummary: summarizeHistory(history), buyingAdvice: buyingAdvice(history), hasObservedHistory: history.length > 0, hasVerifiedHistory: false });
       }
       if (req.method === 'POST' && url.pathname === '/api/calculate') return json(res, 200, calculateDeal(await readBody(req)));
       if (req.method === 'POST' && url.pathname === '/api/quotes/refresh') {

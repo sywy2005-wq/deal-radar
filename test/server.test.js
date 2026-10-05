@@ -39,3 +39,15 @@ test('状态接口展示采集状态且隐藏原始响应', async t => {
   assert.equal(body.history[0].evidence.rawResponse, undefined);
   assert.equal(body.history[0].evidence.responseSha256, 'test-hash');
 });
+
+test('默认购买建议为空，页面包含购买辅助区域', async t => {
+  const server = createApp({ sources: [], quoteStore: { list: async () => [] } });
+  await new Promise(resolve => server.listen(0, resolve));
+  t.after(() => { server.closeAllConnections(); return new Promise(resolve => server.close(resolve)); });
+  const origin = `http://127.0.0.1:${server.address().port}`;
+  const body = await (await fetch(origin + '/api/status')).json();
+  assert.equal(body.buyingAdvice.status, 'waiting_for_data');
+  assert.deepEqual(body.buyingAdvice.candidates, []);
+  const html = await (await fetch(origin)).text();
+  assert.match(html, /购买时机与方法/);
+});

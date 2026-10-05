@@ -25,8 +25,14 @@ export class QuoteStore {
     if (!quote.sourceId || quote.sku !== 'KX0493' || quote.size !== 'L' || quote.currency !== 'CNY' || !Number.isFinite(Date.parse(quote.observedAt)) || moneyCents(quote.price, '价格') <= 0) throw new TypeError('报价身份或价格无效');
     const operation = this.queue.then(async () => {
       const rows = await this.list();
-      const key = JSON.stringify([comparisonKey(quote), quote.observedAt, quote.stock, quote.shippingCents, quote.priceCents ?? moneyCents(quote.price)]);
-      const rowKey = row => JSON.stringify([comparisonKey(row), row.observedAt, row.stock, row.shippingCents, row.priceCents ?? moneyCents(row.price)]);
+      const rowKey = row => JSON.stringify([
+        comparisonKey(row), row.observedAt, row.stock, row.shippingCents,
+        row.priceCents ?? moneyCents(row.price), row.priceValidUntil,
+        row.evidence?.responseSha256, row.evidence?.parserVersion,
+        row.pricing?.status, row.pricing?.validUntil,
+        row.pricing?.applied?.map(offer => offer.id)
+      ]);
+      const key = rowKey(quote);
       if (rows.some(row => rowKey(row) === key)) return quote;
       rows.push(quote);
       await this.io.mkdir(dirname(this.file), { recursive: true });

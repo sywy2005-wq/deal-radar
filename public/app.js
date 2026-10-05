@@ -58,9 +58,43 @@ function renderHistory(rows, summary) {
   $('#notice strong').textContent = `已采集 ${rows.length} 条报价记录`;
   $('#notice span').textContent = `${summary.pendingCount} 条购买条件待核验；最低值仅覆盖已采集区间，并按来源、颜色和购买条件分组。`;
 }
+function renderAdvice(advice) {
+  const container = $('#buying-advice');
+  container.replaceChildren(element('p', advice.message));
+  for (const group of advice.comparisons) {
+    const card = element('article', '');
+    card.append(element('strong', `当前已采集同条件最低合计 ${yuan(group.currentMinimumCents / 100)}`),
+      element('p', `${group.color} · ${group.shippingRegion} · ${group.eligibilityKey} · ${group.sourceCount} 个来源，付款前需结账核验`));
+    for (const row of group.quotes) card.append(element('p', `${row.sourceName}：${yuan(row.totalCents / 100)}`));
+    container.append(card);
+  }
+  for (const candidate of advice.candidates) {
+    const card = element('article', '');
+    card.append(element('strong', candidate.sourceName), element('p', candidate.message));
+    if (candidate.totalCents !== null) card.append(element('p', `来源条件合计 ${yuan(candidate.totalCents / 100)} · 未经过结账核验`));
+    if (candidate.observedFrom) card.append(element('small', `采集区间：${when(candidate.observedFrom)} 至 ${when(candidate.observedTo)} · ${candidate.sampleCount} 条`));
+    if (candidate.nextReviewAt) card.append(element('p', `已知活动开始后可复核：${when(candidate.nextReviewAt)}；不保证未来优惠或库存。`));
+    for (const step of candidate.purchaseSteps) {
+      const line = element('p', step.text);
+      if (step.url) {
+        try {
+          const url = new URL(step.url);
+          if (url.protocol === 'https:' && !url.username && !url.password) {
+            const link = element('a', ' 打开领取入口');
+            link.href = url.href; link.target = '_blank'; link.rel = 'noopener noreferrer';
+            line.append(link);
+          }
+        } catch {}
+      }
+      card.append(line);
+    }
+    container.append(card);
+  }
+}
 async function load() {
   const status = await request('/api/status');
   renderHistory(status.history, status.historySummary);
+  renderAdvice(status.buyingAdvice);
   const sourceBox = $('#source-status');
   sourceBox.replaceChildren();
   for (const source of status.sources) {
