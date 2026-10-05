@@ -4,29 +4,35 @@ import { extname, join, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { TARGET } from './catalog.js';
 import { calculateDeal } from './deals.js';
-import { fetchVerifiedQuote } from './quotes.js';
-import { loadSources } from './sources.js';
+import { fetchVerifiedQuote, publicQuote, publicResults } from './quotes.js';
+import { loadSources, publicSources } from './sources.js';
 import { QuoteStore } from './store.js';
 import { summarizeHistory } from './history.js';
+import { CollectionJournal } from './collection-journal.js';
+import { Collector } from './collector.js';
 
 const root = fileURLToPath(new URL('../public/', import.meta.url));
 const store = new QuoteStore(process.env.HISTORY_FILE || fileURLToPath(new URL('../data/history.json', import.meta.url)));
 const json = (res, status, body) => { res.writeHead(status, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' }); res.end(JSON.stringify(body)); };
 const readBody = async req => { const chunks = []; for await (const chunk of req) chunks.push(chunk); return JSON.parse(Buffer.concat(chunks).toString() || '{}'); };
 
-export function createApp({ sources = loadSources(), quoteStore = store, fetchImpl = fetch } = {}) {
+export function createApp({ sources = loadSources(), quoteStore = store, fetchImpl = fetch, collector = null } = {}) {
   return createServer(async (req, res) => {
     try {
       const url = new URL(req.url, 'http://localhost');
       if (req.method === 'GET' && url.pathname === '/api/status') {
-        const history = await quoteStore.list();
-        return json(res, 200, { target: TARGET, sources: sources.map(({ id, name, enabled }) => ({ id, name, enabled })), history, historySummary: summarizeHistory(history), hasObservedHistory: history.length > 0, hasVerifiedHistory: false });
+        const history = (await quoteStore.list()).map(publicQuote);
+        return json(res, 200, { target: TARGET, sources: publicSources(sources), collection: collector ? collector.status() : { enabled: false, running: false }, history, historySummary: summarizeHistory(history), hasObservedHistory: history.length > 0, hasVerifiedHistory: false });
       }
       if (req.method === 'POST' && url.pathname === '/api/calculate') return json(res, 200, calculateDeal(await readBody(req)));
       if (req.method === 'POST' && url.pathname === '/api/quotes/refresh') {
+        if (collector) {
+          const response = await collector.run({ manual: true });
+          return json(res, 200, { results: publicResults(response.results) });
+        }
         const results = await Promise.all(sources.map(source => fetchVerifiedQuote(source, { fetchImpl })));
         await Promise.all(results.filter(result => result.ok).map(result => quoteStore.add(result.quote)));
-        return json(res, 200, { results });
+        return json(res, 200, { results: publicResults(results) });
       }
       if (req.method !== 'GET') return json(res, 404, { error: 'Not found' });
       const requested = url.pathname === '/' ? 'index.html' : normalize(url.pathname).replace(/^(\.\.[/\\])+/, '').replace(/^[/\\]/, '');
@@ -44,5 +50,15 @@ export function createApp({ sources = loadSources(), quoteStore = store, fetchIm
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const port = Number(process.env.PORT) || 3000;
-  createApp().listen(port, () => console.log(`Deal Radar: http://localhost:${port}`));
+  const sources = loadSources();
+  const journal = new CollectionJournal(process.env.COLLECTION_DB || fileURLToPath(new URL('../data/collection.sqlite', import.meta.url)));
+  const collector = new Collector({ sources, quoteStore: store, journal, enabled: process.env.COLLECTION_ENABLED === 'true' });
+  const server = createApp({ sources, collector });
+  server.listen(port, () => { collector.start(); console.log(`Deal Radar: http://localhost:${port}`); });
+  const shutdown = async () => {
+    await collector.stop();
+    server.close(() => journal.close());
+  };
+  process.once('SIGTERM', shutdown);
+  process.once('SIGINT', shutdown);
 }

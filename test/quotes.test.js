@@ -82,3 +82,28 @@ test('非法商品链接和时间配置返回校验失败而非未捕获异常',
 test('没有时区的观测时间不能作为真实采集时间', () => {
   assert.equal(validateQuote({ ...quote, observedAt: '2026-10-02T11:50:00' }, source, now).ok, false);
 });
+
+test('官方 API 和商品域名不同必须显式列入白名单', () => {
+  const reviewed = { ...source, url: 'https://api.example/quote', allowedProductOrigins: ['https://shop.example'] };
+  assert.equal(validateQuote(quote, reviewed, now).ok, true);
+  assert.equal(validateQuote(quote, { ...reviewed, allowedProductOrigins: [] }, now).ok, false);
+});
+test('原始响应与摘要入证据，但公开报价不返回原始响应', async () => {
+  const { publicQuote } = await import('../src/quotes.js');
+  const { createHash } = await import('node:crypto');
+  const result = await fetchVerifiedQuote(source, { now, fetchImpl: async () => ({ ok: true, json: async () => quote }) });
+  assert.deepEqual(result.quote.evidence.rawResponse, quote);
+  assert.equal(result.quote.evidence.responseSha256, createHash('sha256').update(JSON.stringify(quote)).digest('hex'));
+  assert.equal(publicQuote(result.quote).evidence.rawResponse, undefined);
+});
+test('请求携带环境凭据并禁止重定向，错误不回显凭据', async () => {
+  let options;
+  const secretSource = { ...source, token: 'secret-test-only' };
+  await fetchVerifiedQuote(secretSource, { now, fetchImpl: async (_url, opts) => {
+    options = opts; return { ok: true, json: async () => quote };
+  } });
+  assert.equal(options.headers.authorization, 'Bearer secret-test-only');
+  assert.equal(options.redirect, 'error');
+  const failed = await fetchVerifiedQuote(secretSource, { fetchImpl: async () => { throw new Error('secret-test-only'); } });
+  assert.ok(!JSON.stringify(failed).includes('secret-test-only'));
+});

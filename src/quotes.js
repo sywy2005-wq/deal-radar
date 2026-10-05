@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { TARGET } from './catalog.js';
 import { moneyCents, quantityValue } from './money.js';
 import { comparisonConditions } from './conditions.js';
@@ -23,7 +24,7 @@ export function validateQuote(raw, source, now = new Date()) {
   try {
     const endpoint = new URL(source.url);
     const product = new URL(raw.productUrl, endpoint);
-    if (!text(raw.productUrl) || !['https:', 'http:'].includes(endpoint.protocol) || product.origin !== endpoint.origin || product.username || product.password || endpoint.username || endpoint.password) throw new TypeError();
+    if (!text(raw.productUrl) || !['https:', 'http:'].includes(endpoint.protocol) || !(source.allowedProductOrigins || [endpoint.origin]).includes(product.origin) || product.username || product.password || endpoint.username || endpoint.password) throw new TypeError();
     productUrl = product.href;
   } catch { errors.push('商品链接不属于数据源'); }
   let shippingCents = null;
@@ -61,12 +62,41 @@ export async function fetchVerifiedQuote(source, { fetchImpl = fetch, now } = {}
   if (!source.enabled) return { ok: false, status: 'disabled', errors: ['数据源未启用'] };
   try {
     const response = await fetchImpl(source.url, {
-      headers: { accept: 'application/json', 'user-agent': 'deal-radar/0.1' },
+      headers: { accept: 'application/json', 'user-agent': 'deal-radar/0.1', ...(source.token ? { authorization: `Bearer ${source.token}` } : {}) },
+      redirect: 'error',
       signal: AbortSignal.timeout(8000)
     });
     if (!response.ok) return { ok: false, status: 'error', errors: [`上游返回 HTTP ${response.status}`] };
-    return { ...validateQuote(await response.json(), source, now ?? new Date()), status: 'checked' };
+    let raw;
+    if (response.body && typeof response.body[Symbol.asyncIterator] === 'function') {
+      const chunks = [];
+      let bytes = 0;
+      for await (const chunk of response.body) {
+        bytes += chunk.byteLength;
+        if (bytes > 262144) throw new TypeError('上游响应过大');
+        chunks.push(Buffer.from(chunk));
+      }
+      raw = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+    } else raw = await response.json();
+    const serialized = JSON.stringify(raw);
+    if (Buffer.byteLength(serialized) > 262144) throw new TypeError('上游响应过大');
+    const checked = validateQuote(raw, source, now ?? new Date());
+    if (checked.ok) checked.quote.evidence = {
+      parserVersion: 'json-v2', receivedAt: checked.quote.verifiedAt,
+      responseSha256: createHash('sha256').update(serialized).digest('hex'),
+      rawResponse: raw
+    };
+    return { ...checked, status: 'checked' };
   } catch (error) {
-    return { ok: false, status: 'error', errors: [`拉取失败: ${error.message}`] };
+    return { ok: false, status: 'error', errors: ['上游请求或响应处理失败'] };
   }
+}
+
+export function publicQuote(quote) {
+  if (!quote.evidence) return quote;
+  const { rawResponse, ...evidence } = quote.evidence;
+  return { ...quote, evidence };
+}
+export function publicResults(results) {
+  return results.map(result => result.ok ? { ...result, quote: publicQuote(result.quote) } : result);
 }

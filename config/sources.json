@@ -1,0 +1,24 @@
+[
+  {
+    "id": "jd-official",
+    "name": "京东",
+    "channel": "jd",
+    "enabled": false,
+    "reviewStatus": "pending",
+    "reviewEvidence": null,
+    "url": null,
+    "allowedProductOrigins": [],
+    "blockedReason": "尚未取得授权接口和商家核验证据"
+  },
+  {
+    "id": "tmall-official",
+    "name": "天猫",
+    "channel": "tmall",
+    "enabled": false,
+    "reviewStatus": "pending",
+    "reviewEvidence": null,
+    "url": null,
+    "allowedProductOrigins": [],
+    "blockedReason": "尚未取得授权接口和商家核验证据"
+  }
+]

@@ -61,6 +61,21 @@ function renderHistory(rows, summary) {
 async function load() {
   const status = await request('/api/status');
   renderHistory(status.history, status.historySummary);
+  const sourceBox = $('#source-status');
+  sourceBox.replaceChildren();
+  for (const source of status.sources) {
+    sourceBox.append(element('p', `${source.name}：${source.enabled ? '已启用' : '未启用'}${source.blockedReasons.length ? ' · ' + source.blockedReasons.join('；') : ''}`));
+  }
+  if (!status.sources.length) sourceBox.textContent = '尚未配置数据源。';
+  const collection = status.collection;
+  const rate = collection.timelySuccessRate === null || collection.timelySuccessRate === undefined
+    ? '尚无到期样本' : `${(collection.timelySuccessRate * 100).toFixed(1)}%`;
+  $('#collection-status').textContent = collection.running
+    ? `自动采集运行中 · 每十分钟 · 七日窗口及时可用率：${rate} · ${collection.sevenDayAccepted ? '采集指标达标' : '尚未满足七日采集指标'}`
+    : '自动采集未运行。接入状态和测试通过不代表已经采到真实报价。';
+  for (const source of collection.sources || []) {
+    if (source.consecutiveFailureAlert) sourceBox.append(element('p', `${source.id}：连续三次采集失败，请检查接口或凭据。`));
+  }
 }
 $('#refresh').addEventListener('click', async event => {
   const button = event.currentTarget;

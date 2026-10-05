@@ -24,3 +24,18 @@ test('字段校验通过不宣称结账核验，缺失条件不产生最低价',
   assert.equal(body.historySummary.pendingCount, 1);
   assert.deepEqual(body.historySummary.groups, []);
 });
+
+test('状态接口展示采集状态且隐藏原始响应', async t => {
+  const history = [{
+    sourceId: 'test', sku: 'KX0493', size: 'L', currency: 'CNY', price: 100,
+    evidence: { parserVersion: 'json-v2', responseSha256: 'test-hash', rawResponse: { privateField: 'test-private' } }
+  }];
+  const server = createApp({ sources: [], quoteStore: { list: async () => history },
+    collector: { status: () => ({ enabled: false, running: false }) } });
+  await new Promise(resolve => server.listen(0, resolve));
+  t.after(() => { server.closeAllConnections(); return new Promise(resolve => server.close(resolve)); });
+  const body = await (await fetch(`http://127.0.0.1:${server.address().port}/api/status`)).json();
+  assert.equal(body.collection.running, false);
+  assert.equal(body.history[0].evidence.rawResponse, undefined);
+  assert.equal(body.history[0].evidence.responseSha256, 'test-hash');
+});
