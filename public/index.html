@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Deal Radar · KX0493</title><link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <header><div class="brand">DEAL<span>RADAR</span></div><div class="pill">● 本地监控</div></header>
+  <main>
+    <section class="hero">
+      <div><p class="eyebrow">目标商品</p><h1>ST 3ST LW JKT</h1><div class="tags"><span>货号 KX0493</span><span>尺码 L</span></div></div>
+      <div class="radar" aria-hidden="true"><i></i><b></b></div>
+    </section>
+    <section class="notice" id="notice"><strong>尚无真实报价</strong><span>未经验证的数据源默认关闭；页面不会展示或推断价格。</span></section>
+    <section class="card"><p class="eyebrow">接入与采集</p><h2>数据来源状态</h2><div id="source-status" class="empty">读取接入状态…</div><p id="collection-status">自动采集尚未启用。</p></section>\n    <section class="card"><p class="eyebrow">购买辅助</p><h2>购买时机与方法</h2><div id="buying-advice" class="empty">尚无真实报价，暂不提供购买建议。</div></section>\n    <div class="grid">
+      <section class="card"><div class="card-head"><div><p class="eyebrow">实时校验</p><h2>报价雷达</h2></div><button id="refresh">立即校验</button></div><div id="quotes" class="empty">等待已启用数据源返回与目标货号、尺码一致的报价。</div></section>
+      <section class="card calculator"><p class="eyebrow">优惠工具</p><h2>叠加计算器</h2>
+        <label>商品单价（元）<input id="price" type="number" min="0" step="0.01" placeholder="请输入真实标价"></label>
+        <div class="two"><label>折扣（%）<input id="percent" type="number" min="0" max="100" value="0"></label><label>立减（元）<input id="fixed" type="number" min="0" value="0"></label></div>
+        <button id="calculate" class="dark">计算商品金额</button><div id="result" class="total"><span>优惠后商品金额</span><strong>—</strong><small>仅计算，不作为真实报价</small></div>
+      </section>
+    </div>
+    <section class="card history"><div class="card-head"><div><p class="eyebrow">仅存字段校验通过的记录</p><h2>价格历史</h2></div><span id="history-count">0 条</span></div><div id="history" class="empty">暂无真实历史数据，因此不提供历史价格结论。</div></section>
+  </main><footer>DEAL RADAR · 数据透明优先 · CNY</footer><script type="module" src="/app.js"></script>
+</body></html>
